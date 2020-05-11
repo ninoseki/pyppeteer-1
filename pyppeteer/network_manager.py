@@ -10,7 +10,7 @@ import copy
 import json
 import logging
 from types import SimpleNamespace
-from typing import Awaitable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Awaitable, Dict, List, Optional, Union, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
 from pyee import EventEmitter
@@ -199,6 +199,10 @@ class NetworkManager(EventEmitter):
                     redirectResponse.get('headers'),
                     redirectResponse.get('fromDiskCache'),
                     redirectResponse.get('fromServiceWorker'),
+                    RemoteAddress(
+                        ip=cast(str, redirectResponse.get('remoteIPAddress')),
+                        port=cast(int, redirectResponse.get('remotePort'))
+                    ),
                     redirectResponse.get('SecurityDetails'),
                 )
                 redirectChain = request._redirectChain
@@ -226,10 +230,11 @@ class NetworkManager(EventEmitter):
     def _handleRequestRedirect(self, request: 'Request', redirectStatus: int,
                                redirectHeaders: Dict, fromDiskCache: bool,
                                fromServiceWorker: bool,
+                               remoteAddress: 'RemoteAddress',
                                securityDetails: Dict = None) -> None:
         response = Response(self._client, request, redirectStatus,
                             redirectHeaders, fromDiskCache, fromServiceWorker,
-                            securityDetails)
+                            remoteAddress, securityDetails)
         request._response = response
         request._redirectChain.append(request)
         response._bodyLoadedPromiseFulfill(
@@ -268,6 +273,10 @@ class NetworkManager(EventEmitter):
                             _resp.get('headers', {}),
                             _resp.get('fromDiskCache'),
                             _resp.get('fromServiceWorker'),
+                            RemoteAddress(
+                                ip=cast(str, _resp.get('remoteIPAddress')),
+                                port=cast(int, _resp.get('remotePort'))
+                            ),
                             _resp.get('securityDetails'))
         request._response = response
         self.emit(NetworkManager.Events.Response, response)
@@ -589,7 +598,9 @@ class Response(object):
 
     def __init__(self, client: CDPSession, request: Request, status: int,
                  headers: Dict[str, str], fromDiskCache: bool,
-                 fromServiceWorker: bool, securityDetails: Dict = None
+                 fromServiceWorker: bool,
+                 remoteAddress: 'RemoteAddress',
+                 securityDetails: Dict = None
                  ) -> None:
         self._client = client
         self._request = request
@@ -601,6 +612,7 @@ class Response(object):
         self._fromDiskCache = fromDiskCache
         self._fromServiceWorker = fromServiceWorker
         self._headers = {k.lower(): v for k, v in headers.items()}
+        self._remoteAddress = remoteAddress
         self._securityDetails: Union[Dict, SecurityDetails] = {}
         if securityDetails:
             self._securityDetails = SecurityDetails(
@@ -636,6 +648,11 @@ class Response(object):
         All header names are lower-case.
         """
         return self._headers
+
+    @property
+    def remoteAddress(self) -> 'RemoteAddress':
+        """Return remote address associated with this resonse."""
+        return self._remoteAddress
 
     @property
     def securityDetails(self) -> Union[Dict, 'SecurityDetails']:
@@ -763,6 +780,23 @@ class SecurityDetails(object):
     def protocol(self) -> str:
         """Return string of with the security protocol, e.g. "TLS1.2"."""
         return self._protocol
+
+
+class RemoteAddress(object):
+    """RemoteAddress class represents remote addresses of responses"""
+
+    def __init__(self, ip: str, port: int) -> None:
+        self._ip = ip
+        self._port = port
+
+    def ip(self) -> str:
+        """Return string of the IP address of the remote server"""
+        return self._ip
+
+    @property
+    def port(self) -> int:
+        """Returns the port used to connect to the remote server"""
+        return self._port
 
 
 statusTexts = {

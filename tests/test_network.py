@@ -61,6 +61,9 @@ class TestNetworkEvent(BaseTestCase):
         self.assertFalse(response.fromServiceWorker)
         self.assertTrue(response.request)
         self.assertEqual(response.securityDetails, {})
+        self.assertTrue(response.remoteAddress)
+        self.assertTrue(response.remoteAddress.ip, "[::1]")
+        self.assertEqual(response.remoteAddress.port, self.port)
 
     @sync
     async def test_response_https(self):
@@ -77,6 +80,8 @@ class TestNetworkEvent(BaseTestCase):
         self.assertTrue(response.request)
         self.assertTrue(response.securityDetails)
         self.assertEqual(response.securityDetails.protocol, 'TLS 1.2')
+        self.assertTrue(response.remoteAddress)
+        self.assertEqual(response.remoteAddress.port, 443)
 
     @sync
     async def test_from_cache(self):
